@@ -2,12 +2,16 @@ package main
 
 import (
 	"bufio"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 )
@@ -26,10 +30,28 @@ func SignSHA256Digest(keyPath string, hashVal [32]byte) (*[32]byte, error) {
 	return sig, err
 }
 
-
 // Encrypt Update-Artifact symmetrically
-func (artifact *UpdateArtifact) encrypt(symmetricKeyPath string) error {
-	return nil
+func (artifact *UpdateArtifact) EncryptArtifact(AESKeyPath string) (*[]byte, error) {
+	key, err := ioutil.ReadFile(AESKeyPath)
+	if err != nil {
+		return nil, err
+	}
+	ciph, err := aes.NewCipher(key)
+	if err!=nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(ciph)
+	if err!= nil {
+		return nil, err
+	}
+	// Create IV (here: Nonce) ...
+	nonce := make([]byte, gcm.NonceSize())
+	// ... and populate it with random Bits
+	if _,err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+
 }
 
 type UpdateHeader struct {
@@ -111,14 +133,14 @@ func (header *UpdateHeader) AddSHA256FileSum(file *os.File, imageChunkSize uint3
 
 /* Creates an Update-Artifact.
 If URI is "", the Firmware-Image will be integrated into the artifact.
- */
-func CreateArtifact(sequenceNumber uint64, hardwareUUID [16]byte, fwImagePath string, URI string, keyPath string) (*UpdateArtifact, error) {
-	if fwImagePath == ""  {
+*/
+func CreateArtifact(sequenceNumber uint64, hardwareUUID [16]byte, fwImagePath string, URI string, sigKeyPath string) (*UpdateArtifact, error) {
+	if fwImagePath == "" {
 		return nil, errors.New("must provide fwImagePath")
 	}
 
-	if keyPath == ""  {
-		return nil, errors.New("must provide keyPath")
+	if sigKeyPath == "" {
+		return nil, errors.New("must provide sigKeyPath")
 	}
 
 	var header UpdateHeader
@@ -145,13 +167,13 @@ func CreateArtifact(sequenceNumber uint64, hardwareUUID [16]byte, fwImagePath st
 		Payload: image,
 	}
 
-	err = artifact.AddRSASignature(keyPath)
+	err = artifact.AddRSASignature(sigKeyPath)
 
 	return &artifact, err
 }
 
 func main() {
-	art, err := CreateArtifact(1, [16]byte{0}, "","", "")
+	art, err := CreateArtifact(1, [16]byte{0}, "", "", "")
 	if err != nil {
 		log.Fatal(err)
 	} else {
